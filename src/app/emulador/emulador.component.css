@@ -1,0 +1,70 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: 20px;
+}
+
+.button {
+  padding: 10px 20px;
+  margin: 5px;
+  font-size: 16px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  background-color: #4CAF50;
+  color: white;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  transition-duration: 0.4s;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.button:hover {
+  background-color: #45a049;
+}
+
+.detener {
+  background-color: #f44336;
+}
+
+.detener:hover {
+  background-color: #d32f2f;
+}
+
+.icons {
+  position: relative;
+}
+
+img {
+  width: 100px;
+  height: 100px;
+  animation: parpadeo 0.5s infinite alternate;
+}
+
+select {
+  padding: 8px 15px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 16px;
+}
+
+/* Animación de parpadeo */
+@keyframes parpadeo {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.1;
+  }
+}
+
+/* Estilos para la sección de habitación seleccionada */
+.selected-room {
+  margin-top: 20px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  background-color: #f9f9f9;
+}

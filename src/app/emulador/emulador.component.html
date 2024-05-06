@@ -1,0 +1,27 @@
+<div>
+    <select (change)="seleccionarHabitacion($event)">
+        <option disabled selected>Selecciona una habitación</option>
+        <option *ngFor="let habitacion of habitacionesOcupadas" [value]="habitacion.id_habitacion">{{ habitacion.nombre_habitacion }}</option>
+    </select>
+</div>
+
+
+<div *ngIf="habitacionSeleccionada">
+    <p>Habitación seleccionada: {{ habitacionSeleccionada.nombre_habitacion }}</p>
+</div>
+
+<div>
+    <button class="button" (click)="iniciar()">Iniciar</button>
+    <button class="button" (click)="signosAltos()">Signos Altos</button>
+    <button class="button" (click)="signosBajos()">Signos Bajos</button>
+    <button class="button" (click)="estable()">Estable</button>
+    <button class="button detener" (click)="detener()">Detener</button>
+</div>
+
+<div *ngIf="sirenaActiva">
+    <img src="../assets/icons/sirena.png" alt="Sirena" class="Sirena">
+</div>
+
+<div *ngIf="bocinaActiva">
+    <img src="../assets/icons/bocina.png" alt="Bocina" class="Bocina">
+</div>
