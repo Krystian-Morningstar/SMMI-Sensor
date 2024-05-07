@@ -9,7 +9,7 @@ import { HttpClient } from '@angular/common/http';
 })
 export class EmuladorComponent implements OnInit, OnDestroy {
   intervalId: any;
-  hostapi: string = "http://192.168.218.111:3000"
+  hostapi: string = "http://192.168.1.67:3000"
   temperaturaActual: number = 36;
   presionSistolica: number = 120;
   presionDiastolica: number = 80;
@@ -95,70 +95,84 @@ export class EmuladorComponent implements OnInit, OnDestroy {
     clearInterval(this.intervalId);
   }
 
-  generarDatos(signosAltos = false, signosBajos = false) {
-    const rango = (min: number, max: number) => Math.random() * (max - min) + min;
+  generarDatos(signosAltos = false, signosBajos = false): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const rango = (min: number, max: number) => Math.random() * (max - min) + min;
 
-    if (signosAltos) {
-      this.temperaturaActual += rango(0.05, 0.2);
-      this.presionSistolica += rango(5, 10);
-      this.presionDiastolica += rango(3, 7);
-      this.oxigenacion += rango(0.5, 2);
-      this.ritmoCardiacoActual += rango(2, 5);
-    } else if (signosBajos) {
-      this.temperaturaActual -= rango(0.05, 0.2);
-      this.presionSistolica -= rango(5, 10);
-      this.presionDiastolica -= rango(3, 7);
-      this.oxigenacion -= rango(0.5, 2);
-      this.ritmoCardiacoActual -= rango(2, 5);
-    }
-
-    this.temperaturaActual = Math.min(38, Math.max(35, this.temperaturaActual));
-    this.presionSistolica = Math.min(180, Math.max(90, this.presionSistolica));
-    this.presionDiastolica = Math.min(120, Math.max(60, this.presionDiastolica));
-    this.oxigenacion = Math.min(100, Math.max(95, this.oxigenacion));
-    this.ritmoCardiacoActual = Math.min(100, Math.max(60, this.ritmoCardiacoActual));
-
-    this.sensores.forEach(sensor => {
-      let valor = 0;
-      switch (sensor.nombre) {
-        case 'Frecuencia Respiratoria':
-          valor = this.oxigenacion
-          break;
-        case 'Frecuencia Cardiaca':
-          valor = this.ritmoCardiacoActual;
-          break;
-        case 'Presion Arterial Sistolica':
-          valor = this.presionSistolica;
-          break;
-        case 'Presion Arterial Diastolica':
-          valor = this.presionDiastolica;
-          break;
-        case 'Temperatura Corporal':
-          valor = this.temperaturaActual;
-          break;
-        default:
-          break;
+      if (signosAltos) {
+        this.temperaturaActual += rango(0.05, 0.2);
+        this.presionSistolica += rango(5, 10);
+        this.presionDiastolica += rango(3, 7);
+        this.oxigenacion += rango(0.5, 2);
+        this.ritmoCardiacoActual += rango(2, 5);
+      } else if (signosBajos) {
+        this.temperaturaActual -= rango(0.05, 0.2);
+        this.presionSistolica -= rango(5, 10);
+        this.presionDiastolica -= rango(3, 7);
+        this.oxigenacion -= rango(0.5, 2);
+        this.ritmoCardiacoActual -= rango(2, 5);
       }
-      this.publicarMensaje(this.habitacionSeleccionada.id_habitacion, sensor, valor);
+
+      this.temperaturaActual = Math.min(38, Math.max(35, this.temperaturaActual));
+      this.presionSistolica = Math.min(180, Math.max(90, this.presionSistolica));
+      this.presionDiastolica = Math.min(120, Math.max(60, this.presionDiastolica));
+      this.oxigenacion = Math.min(100, Math.max(95, this.oxigenacion));
+      this.ritmoCardiacoActual = Math.min(100, Math.max(60, this.ritmoCardiacoActual));
+
+      const promesasPublicacion: Promise<void>[] = [];
+      this.sensores.forEach(sensor => {
+        let valor = 0;
+        switch (sensor.nombre) {
+          case 'Frecuencia Respiratoria':
+            valor = this.oxigenacion;
+            break;
+          case 'Frecuencia Cardiaca':
+            valor = this.ritmoCardiacoActual;
+            break;
+          case 'Presion Arterial Sistolica':
+            valor = this.presionSistolica;
+            break;
+          case 'Presion Arterial Diastolica':
+            valor = this.presionDiastolica;
+            break;
+          case 'Temperatura Corporal':
+            valor = this.temperaturaActual;
+            break;
+          default:
+            break;
+        }
+        promesasPublicacion.push(this.publicarMensaje(this.habitacionSeleccionada.id_habitacion, sensor, valor));
+      });
+
+      Promise.all(promesasPublicacion)
+        .then(() => {
+          resolve();
+        })
+        .catch((error) => {
+          reject(error);
+        });
     });
   }
 
-  publicarMensaje(idHabitacion: number, sensor: any, valor: number) {
-    const ruta = `SMMI/Habitacion${idHabitacion}${sensor.topico}`;
-    const payloadObj: any = {
-      id_sensor: sensor.id_sensor,
-      valor: valor,
-      id_habitacion: idHabitacion
-
-    }
-    console.log(payloadObj)
-    const payload = JSON.stringify(payloadObj)
-    this.mqttService.publish(ruta, payload).subscribe(() => {
-      console.log(`Mensaje de ${sensor.topico} enviado con éxito a la habitación ${idHabitacion}`);
-    }, (error) => {
-      console.error(`Error al enviar mensaje de ${sensor.topico} a la habitación ${idHabitacion}:`, error);
+  publicarMensaje(idHabitacion: number, sensor: any, valor: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const ruta = `SMMI/Habitacion${idHabitacion}${sensor.topico}`;
+      const payloadObj: any = {
+        id_sensor: sensor.id,
+        valor: valor,
+        id_habitacion: idHabitacion
+      };
+      const payload = JSON.stringify(payloadObj);
+      this.mqttService.publish(ruta, payload).subscribe(() => {
+        console.log(`Mensaje de ${sensor.topico} enviado con éxito a la habitación ${idHabitacion}-${sensor.nombre}`);
+        resolve();
+      }, (error) => {
+        console.error(`Error al enviar mensaje de ${sensor.topico} a la habitación ${idHabitacion}:`, error);
+        reject(error);
+      });
     });
   }
+
 
   activarAlertas() {
     this.sirenaActiva = true;
@@ -211,7 +225,7 @@ export class EmuladorComponent implements OnInit, OnDestroy {
     if (idHabitacion) {
       this.habitacionSeleccionada = this.habitacionesOcupadas.find(habitacion => habitacion.id_habitacion === Number(idHabitacion));
       if (this.habitacionSeleccionada) {
-        this.generarDatos();
+        this.generarDatos(); // <--- aqui haces la llamada que te proboca el envio cuando selc una habit
       }
     } else {
       this.habitacionSeleccionada = null;
