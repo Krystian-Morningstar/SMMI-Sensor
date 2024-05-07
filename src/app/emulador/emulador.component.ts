@@ -9,10 +9,11 @@ import { HttpClient } from '@angular/common/http';
 })
 export class EmuladorComponent implements OnInit, OnDestroy {
   intervalId: any;
+  hostapi: string = "http://192.168.218.111:3000"
   temperaturaActual: number = 36;
   presionSistolica: number = 120;
   presionDiastolica: number = 80;
-  oxigenoActual: number = 95;
+  oxigenacion: number = 95;
   ritmoCardiacoActual: number = 65;
   sirenaActiva: boolean = false;
   bocinaActiva: boolean = false;
@@ -20,7 +21,7 @@ export class EmuladorComponent implements OnInit, OnDestroy {
   habitacionesOcupadas: any[] = [];
   habitacionSeleccionada: any;
 
-  constructor(private httpClient: HttpClient, private mqttService: MqttService) {}
+  constructor(private httpClient: HttpClient, private mqttService: MqttService) { }
 
   ngOnInit(): void {
     this.obtenerCatalogoSensores();
@@ -34,7 +35,7 @@ export class EmuladorComponent implements OnInit, OnDestroy {
   }
 
   obtenerCatalogoSensores() {
-    this.httpClient.get<any[]>('http://192.168.218.111:3000/api/sensores/catalogo')
+    this.httpClient.get<any[]>(this.hostapi + '/api/sensores/catalogo')
       .subscribe((sensores: any[]) => {
         this.sensores = sensores;
         this.generarDatos();
@@ -42,7 +43,7 @@ export class EmuladorComponent implements OnInit, OnDestroy {
   }
 
   obtenerHabitacionesOcupadas() {
-    this.httpClient.get<any[]>('http://192.168.218.111:3000/api/habitaciones/ocupados')
+    this.httpClient.get<any[]>(this.hostapi + '/api/habitaciones/ocupados')
       .subscribe((habitaciones: any[]) => {
         this.habitacionesOcupadas = habitaciones;
       });
@@ -82,7 +83,7 @@ export class EmuladorComponent implements OnInit, OnDestroy {
     this.temperaturaActual = 36;
     this.presionSistolica = 120;
     this.presionDiastolica = 80;
-    this.oxigenoActual = 95;
+    this.oxigenacion = 95;
     this.ritmoCardiacoActual = 60;
     this.intervalId = setInterval(() => {
       this.generarDatos();
@@ -101,26 +102,27 @@ export class EmuladorComponent implements OnInit, OnDestroy {
       this.temperaturaActual += rango(0.05, 0.2);
       this.presionSistolica += rango(5, 10);
       this.presionDiastolica += rango(3, 7);
-      this.oxigenoActual += rango(0.5, 2);
+      this.oxigenacion += rango(0.5, 2);
       this.ritmoCardiacoActual += rango(2, 5);
     } else if (signosBajos) {
       this.temperaturaActual -= rango(0.05, 0.2);
       this.presionSistolica -= rango(5, 10);
       this.presionDiastolica -= rango(3, 7);
-      this.oxigenoActual -= rango(0.5, 2);
+      this.oxigenacion -= rango(0.5, 2);
       this.ritmoCardiacoActual -= rango(2, 5);
     }
 
     this.temperaturaActual = Math.min(38, Math.max(35, this.temperaturaActual));
     this.presionSistolica = Math.min(180, Math.max(90, this.presionSistolica));
     this.presionDiastolica = Math.min(120, Math.max(60, this.presionDiastolica));
-    this.oxigenoActual = Math.min(100, Math.max(95, this.oxigenoActual));
+    this.oxigenacion = Math.min(100, Math.max(95, this.oxigenacion));
     this.ritmoCardiacoActual = Math.min(100, Math.max(60, this.ritmoCardiacoActual));
 
     this.sensores.forEach(sensor => {
       let valor = 0;
       switch (sensor.nombre) {
         case 'Frecuencia Respiratoria':
+          valor = this.oxigenacion
           break;
         case 'Frecuencia Cardiaca':
           valor = this.ritmoCardiacoActual;
@@ -142,11 +144,11 @@ export class EmuladorComponent implements OnInit, OnDestroy {
   }
 
   publicarMensaje(idHabitacion: number, sensor: any, valor: number) {
-    const ruta = `SMMI/Habitacion${idHabitacion}${ sensor.topico}`;
-    const payloadObj:any = {
+    const ruta = `SMMI/Habitacion${idHabitacion}${sensor.topico}`;
+    const payloadObj: any = {
       id_sensor: sensor.id_sensor,
       valor: valor,
-      id_habitacion:idHabitacion
+      id_habitacion: idHabitacion
 
     }
     console.log(payloadObj)
@@ -215,5 +217,5 @@ export class EmuladorComponent implements OnInit, OnDestroy {
       this.habitacionSeleccionada = null;
     }
   }
-  
+
 }
