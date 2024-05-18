@@ -1,6 +1,9 @@
 import { Component, OnDestroy, OnInit } from '@angular/core';
 import { MqttService, IMqttMessage } from 'ngx-mqtt';
 import { HttpClient } from '@angular/common/http';
+import axios from 'axios';
+
+import { ConfigSensore, Habitacion } from '../domain/Habitacion';
 
 @Component({
   selector: 'app-emulador',
@@ -9,25 +12,32 @@ import { HttpClient } from '@angular/common/http';
 })
 export class EmuladorComponent implements OnInit, OnDestroy {
   intervalId: any;
-  hostapi: string = "http://192.168.1.67:3000"
+  hostapi: string = "http://localhost:3000"
+
   temperaturaActual: number = 36;
   presionSistolica: number = 120;
   presionDiastolica: number = 80;
   oxigenacion: number = 95;
   ritmoCardiacoActual: number = 65;
+
+
   sirenaActiva: boolean = false;
   bocinaActiva: boolean = false;
-  sensores: any[] = [];
-  habitacionesOcupadas: any[] = [];
-  habitacionSeleccionada: any;
+
+
+  CatalogoSensores: any[] = [];
+  confiAlerta: ConfigSensore[] | undefined = []
+  habitacionesOcupadas: Habitacion[] = [];
+  configHabitaciones: Map<number, ConfigSensore[]> | undefined = new Map();
+
+  habitacionSeleccionada: any = null;
 
   constructor(private httpClient: HttpClient, private mqttService: MqttService) { }
 
   ngOnInit(): void {
     this.obtenerCatalogoSensores();
     this.obtenerHabitacionesOcupadas();
-    this.subscribirSirena();
-    this.subscribirBocina();
+
   }
 
   ngOnDestroy(): void {
@@ -37,21 +47,36 @@ export class EmuladorComponent implements OnInit, OnDestroy {
   obtenerCatalogoSensores() {
     this.httpClient.get<any[]>(this.hostapi + '/api/sensores/catalogo')
       .subscribe((sensores: any[]) => {
-        this.sensores = sensores;
+        this.CatalogoSensores = sensores;
         this.generarDatos();
       });
   }
 
+  async obtenerConfig(id_hab: number) {
+    const data = await axios.get(this.hostapi + '/api/config-sensores/' + id_hab)
+    return data.data
+  }
+
+
   obtenerHabitacionesOcupadas() {
-    this.httpClient.get<any[]>(this.hostapi + '/api/habitaciones/ocupados')
-      .subscribe((habitaciones: any[]) => {
+    this.httpClient.get<Habitacion[]>(this.hostapi + '/api/habitaciones/ocupados')
+      .subscribe((habitaciones: Habitacion[]) => {
         this.habitacionesOcupadas = habitaciones;
+        habitaciones.forEach((hab) => {
+          hab.config_sensores
+          this.configHabitaciones!.set(hab.id_habitacion, hab.config_sensores)
+        })
+
       });
+
+
   }
 
   iniciar() {
     this.detener();
     console.log("Imprimiendo signos vitales normales...");
+    this.subscribirSirena(this.habitacionSeleccionada.id_habitacion);
+    this.subscribirBocina(this.habitacionSeleccionada.id_habitacion);
     this.intervalId = setInterval(() => {
       this.generarDatos();
     }, 1000);
@@ -95,7 +120,7 @@ export class EmuladorComponent implements OnInit, OnDestroy {
     clearInterval(this.intervalId);
   }
 
-  generarDatos(signosAltos = false, signosBajos = false): Promise<void> {
+  async generarDatos(signosAltos = false, signosBajos = false): Promise<void> {
     return new Promise((resolve, reject) => {
       const rango = (min: number, max: number) => Math.random() * (max - min) + min;
 
@@ -120,10 +145,10 @@ export class EmuladorComponent implements OnInit, OnDestroy {
       this.ritmoCardiacoActual = Math.min(100, Math.max(60, this.ritmoCardiacoActual));
 
       const promesasPublicacion: Promise<void>[] = [];
-      this.sensores.forEach(sensor => {
+      this.CatalogoSensores.forEach(async sensor => {
         let valor = 0;
         switch (sensor.nombre) {
-          case 'Frecuencia Respiratoria':
+          case 'Oxigenacion':
             valor = this.oxigenacion;
             break;
           case 'Frecuencia Cardiaca':
@@ -141,7 +166,23 @@ export class EmuladorComponent implements OnInit, OnDestroy {
           default:
             break;
         }
-        promesasPublicacion.push(this.publicarMensaje(this.habitacionSeleccionada.id_habitacion, sensor, valor));
+        valor = parseFloat(valor.toFixed(2))
+        promesasPublicacion.push(this.publicarMensaje(this.habitacionSeleccionada!.id_habitacion, sensor, valor));
+
+        for (let conf of this.confiAlerta!) {
+          if (conf.topico_sensor === sensor.topico) {
+            console.log(conf.topico_sensor === sensor.topico)
+            if (valor < conf.min_valor || valor > conf.max_valor) {
+              promesasPublicacion.push(this.publicarEmergencia(this.habitacionSeleccionada!, {
+                sensor: sensor.nombre,
+                valor: valor
+              }))
+
+              // throw new Error(`Valor fuera de rango para ${sensor.nombre}: ${valor}`);
+            }
+          }
+        }
+
       });
 
       Promise.all(promesasPublicacion)
@@ -154,9 +195,25 @@ export class EmuladorComponent implements OnInit, OnDestroy {
     });
   }
 
+  publicarEmergencia(Habitacion: Habitacion, payloadObj: any): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const ruta = `SMMI/Habitacion${Habitacion.id_habitacion}/emergencia`;
+      console.log(ruta, "<----")
+      const payload = JSON.stringify(payloadObj);
+      this.mqttService.publish(ruta, payload).subscribe(() => {
+        console.log(`ALERTA!!!!!!!!!!!!!`);
+        resolve();
+      }, (error) => {
+        console.error(`Error al enviar mensaje de Alerta`, error);
+        reject(error);
+      });
+    });
+  }
+
   publicarMensaje(idHabitacion: number, sensor: any, valor: number): Promise<void> {
     return new Promise((resolve, reject) => {
       const ruta = `SMMI/Habitacion${idHabitacion}${sensor.topico}`;
+      console.log(ruta)
       const payloadObj: any = {
         id_sensor: sensor.id,
         valor: valor,
@@ -164,7 +221,7 @@ export class EmuladorComponent implements OnInit, OnDestroy {
       };
       const payload = JSON.stringify(payloadObj);
       this.mqttService.publish(ruta, payload).subscribe(() => {
-        console.log(`Mensaje de ${sensor.topico} enviado con éxito a la habitación ${idHabitacion}-${sensor.nombre}`);
+        console.log(`${sensor.topico} => habitación ${idHabitacion}--${valor}`);
         resolve();
       }, (error) => {
         console.error(`Error al enviar mensaje de ${sensor.topico} a la habitación ${idHabitacion}:`, error);
@@ -184,8 +241,8 @@ export class EmuladorComponent implements OnInit, OnDestroy {
     this.bocinaActiva = false;
   }
 
-  subscribirSirena() {
-    this.mqttService.observe('sirena/1').subscribe((message: IMqttMessage) => {
+  subscribirSirena(id_habitacion: number) {
+    this.mqttService.observe("SMMI/Habitacion" + id_habitacion + '/sirena').subscribe((message: IMqttMessage) => {
       if (message.payload.toString() === '1') {
         this.activarSirena();
       } else {
@@ -194,13 +251,20 @@ export class EmuladorComponent implements OnInit, OnDestroy {
     });
   }
 
-  subscribirBocina() {
-    this.mqttService.observe('bocina/1').subscribe((message: IMqttMessage) => {
+  subscribirBocina(id_habitacion: number) {
+    this.mqttService.observe("SMMI/Habitacion" + id_habitacion + '/bocina').subscribe((message: IMqttMessage) => {
       if (message.payload.toString() === '1') {
         this.activarBocina();
       } else {
         this.desactivarBocina();
       }
+    });
+  }
+  subscibirUpdate(id_habitacion: number) {
+    this.mqttService.observe('SMMI/Habitacion' + id_habitacion + "/notificacion_config").subscribe(async (message: IMqttMessage) => {
+      this.confiAlerta = await this.obtenerConfig(id_habitacion)
+      console.log(this.confiAlerta)
+      console.log('update config...')
     });
   }
 
@@ -220,15 +284,16 @@ export class EmuladorComponent implements OnInit, OnDestroy {
     this.bocinaActiva = false;
   }
 
-  seleccionarHabitacion(event: Event) {
+  async seleccionarHabitacion(event: Event) {
     const idHabitacion = (event.target as HTMLSelectElement).value;
     if (idHabitacion) {
       this.habitacionSeleccionada = this.habitacionesOcupadas.find(habitacion => habitacion.id_habitacion === Number(idHabitacion));
       if (this.habitacionSeleccionada) {
-        this.generarDatos(); // <--- aqui haces la llamada que te proboca el envio cuando selc una habit
+        this.confiAlerta = this.configHabitaciones!.get(this.habitacionSeleccionada.id_habitacion)
+        this.subscibirUpdate(this.habitacionSeleccionada.id_habitacion)
+        console.log(this.confiAlerta)
+        // this.generarDatos(); // <--- aqui haces la llamada que te proboca el envio cuando selc una habit
       }
-    } else {
-      this.habitacionSeleccionada = null;
     }
   }
 
