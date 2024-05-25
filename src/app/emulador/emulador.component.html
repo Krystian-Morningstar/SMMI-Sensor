@@ -1,13 +1,15 @@
 <div>
     <select (change)="seleccionarHabitacion($event)">
         <option disabled selected>Selecciona una habitación</option>
-        <option *ngFor="let habitacion of habitacionesOcupadas" [value]="habitacion.id_habitacion">{{ habitacion.nombre_habitacion }}</option>
+        <option *ngFor="let habitacion of habitacionesOcupadas" [value]="habitacion.id_habitacion">{{
+            habitacion.nombre_habitacion }}</option>
     </select>
 </div>
 
 
 <div *ngIf="habitacionSeleccionada">
-    <p>Habitación seleccionada: {{ habitacionSeleccionada.nombre_habitacion }}</p>
+    <p>Habitación seleccionada: {{ habitacionSeleccionada.nombre_habitacion +" - "+
+        habitacionSeleccionada.id_habitacion}}</p>
 </div>
 
 <div>

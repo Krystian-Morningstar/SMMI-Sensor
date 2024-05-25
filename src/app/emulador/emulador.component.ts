@@ -71,29 +71,36 @@ export class EmuladorComponent implements OnInit, OnDestroy {
 
 
   }
+  subs() {
+    this.mqttService.connect()
+    this.subscribirSirena(this.habitacionSeleccionada.id_habitacion);
+    this.subscribirBocina(this.habitacionSeleccionada.id_habitacion);
+    this.subscibirUpdate(this.habitacionSeleccionada.id_habitacion)
+  }
 
   iniciar() {
     this.detener();
     console.log("Imprimiendo signos vitales normales...");
-    this.subscribirSirena(this.habitacionSeleccionada.id_habitacion);
-    this.subscribirBocina(this.habitacionSeleccionada.id_habitacion);
+    this.subs()
     this.intervalId = setInterval(() => {
       this.generarDatos();
-    }, 1000);
+    }, 2000);
   }
 
   signosAltos() {
     this.detener();
+    this.subs()
     console.log("Imprimiendo signos vitales altos...");
     this.desactivarAlertas();
     this.activarAlertas();
     this.intervalId = setInterval(() => {
       this.generarDatos(true);
-    }, 1000);
+    }, 2000);
   }
 
   signosBajos() {
     this.detener();
+    this.subs()
     console.log("Imprimiendo signos vitales bajos...");
     this.desactivarAlertas();
     this.activarAlertas();
@@ -104,6 +111,7 @@ export class EmuladorComponent implements OnInit, OnDestroy {
 
   estable() {
     this.detener();
+    this.subs()
     console.log("Imprimiendo signos vitales normales...");
     this.temperaturaActual = 36;
     this.presionSistolica = 120;
@@ -118,6 +126,7 @@ export class EmuladorComponent implements OnInit, OnDestroy {
   detener() {
     this.desactivarAlertas();
     clearInterval(this.intervalId);
+    this.mqttService.disconnect()
   }
 
   async generarDatos(signosAltos = false, signosBajos = false): Promise<void> {
@@ -145,7 +154,9 @@ export class EmuladorComponent implements OnInit, OnDestroy {
       this.ritmoCardiacoActual = Math.min(100, Math.max(60, this.ritmoCardiacoActual));
 
       const promesasPublicacion: Promise<void>[] = [];
-      this.CatalogoSensores.forEach(async sensor => {
+      const promesasEmergencia: Promise<void>[] = [];
+
+      this.CatalogoSensores.forEach(sensor => {
         let valor = 0;
         switch (sensor.nombre) {
           case 'Oxigenacion':
@@ -169,23 +180,20 @@ export class EmuladorComponent implements OnInit, OnDestroy {
         valor = parseFloat(valor.toFixed(2))
         promesasPublicacion.push(this.publicarMensaje(this.habitacionSeleccionada!.id_habitacion, sensor, valor));
 
-        for (let conf of this.confiAlerta!) {
-          if (conf.topico_sensor === sensor.topico) {
-            console.log(conf.topico_sensor === sensor.topico)
-            if (valor < conf.min_valor || valor > conf.max_valor) {
-              promesasPublicacion.push(this.publicarEmergencia(this.habitacionSeleccionada!, {
-                sensor: sensor.nombre,
-                valor: valor
-              }))
-
-              // throw new Error(`Valor fuera de rango para ${sensor.nombre}: ${valor}`);
-            }
-          }
+        const configAlerta = this.confiAlerta?.find(conf => conf.topico_sensor === sensor.topico);
+        if (configAlerta && (valor < configAlerta.min_valor || valor > configAlerta.max_valor)) {
+          const publicarEmergenciaPromise = this.publicarEmergencia({
+            id_habitacion: this.habitacionSeleccionada.id_habitacion,
+            sensor: sensor.nombre,
+            topico: sensor.topico,
+            valor: valor
+          });
+          promesasEmergencia.push(publicarEmergenciaPromise);
         }
 
       });
 
-      Promise.all(promesasPublicacion)
+      Promise.all([promesasPublicacion, promesasEmergencia])
         .then(() => {
           resolve();
         })
@@ -195,12 +203,12 @@ export class EmuladorComponent implements OnInit, OnDestroy {
     });
   }
 
-  publicarEmergencia(Habitacion: Habitacion, payloadObj: any): Promise<void> {
+  publicarEmergencia(payloadObj: any): Promise<void> {
     return new Promise((resolve, reject) => {
-      const ruta = `SMMI/Habitacion${Habitacion.id_habitacion}/emergencia`;
+      const ruta = `SMMI/Habitacion${payloadObj.id_habitacion}/emergencia`;
       console.log(ruta, "<----")
       const payload = JSON.stringify(payloadObj);
-      this.mqttService.publish(ruta, payload).subscribe(() => {
+      this.mqttService.publish(ruta, payload, { qos: 2 }).subscribe(() => {
         console.log(`ALERTA!!!!!!!!!!!!!`);
         resolve();
       }, (error) => {
@@ -212,7 +220,7 @@ export class EmuladorComponent implements OnInit, OnDestroy {
 
   publicarMensaje(idHabitacion: number, sensor: any, valor: number): Promise<void> {
     return new Promise((resolve, reject) => {
-      const ruta = `SMMI/Habitacion${idHabitacion}${sensor.topico}`;
+      const ruta = `SMMI/Sensores/Habitacion${idHabitacion}${sensor.topico}`;
       console.log(ruta)
       const payloadObj: any = {
         id_sensor: sensor.id,
@@ -290,7 +298,6 @@ export class EmuladorComponent implements OnInit, OnDestroy {
       this.habitacionSeleccionada = this.habitacionesOcupadas.find(habitacion => habitacion.id_habitacion === Number(idHabitacion));
       if (this.habitacionSeleccionada) {
         this.confiAlerta = this.configHabitaciones!.get(this.habitacionSeleccionada.id_habitacion)
-        this.subscibirUpdate(this.habitacionSeleccionada.id_habitacion)
         console.log(this.confiAlerta)
         // this.generarDatos(); // <--- aqui haces la llamada que te proboca el envio cuando selc una habit
       }
