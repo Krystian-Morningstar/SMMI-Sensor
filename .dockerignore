@@ -1,0 +1,9 @@
+/dist
+/node_modules
+/build
+/postgres
+npm-debug.log
+Dockerfile
+.dockerignore
+.git
+.gitignore
