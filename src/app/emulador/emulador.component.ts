@@ -13,7 +13,7 @@ import { ConfigSensore, Habitacion } from '../domain/Habitacion';
 })
 export class EmuladorComponent implements OnInit, OnDestroy {
   intervalId: any;
-  hostapi: string = "http://localhost:3000";
+  hostapi: string = "http://192.168.137.1:3000";
 
   temperaturaActual: number = 36;
   presionSistolica: number = 120;
@@ -23,7 +23,7 @@ export class EmuladorComponent implements OnInit, OnDestroy {
 
   sirenaActiva: boolean = false;
   bocinaActiva: boolean = false;
-
+  hayvaloresAlerta: boolean = false;
   CatalogoSensores: any[] = [];
   confiAlerta: ConfigSensore[] | undefined = [];
   habitacionesOcupadas: Habitacion[] = [];
@@ -72,6 +72,7 @@ export class EmuladorComponent implements OnInit, OnDestroy {
   }
 
   iniciar() {
+    this.hayvaloresAlerta = false
     this.detener();
     this.subscripciones();
     this.intervalId = setInterval(() => {
@@ -80,6 +81,7 @@ export class EmuladorComponent implements OnInit, OnDestroy {
   }
 
   signosAltos() {
+    this.hayvaloresAlerta = true
     this.detener();
     this.subscripciones();
     this.activarAlertas();
@@ -89,6 +91,8 @@ export class EmuladorComponent implements OnInit, OnDestroy {
   }
 
   signosBajos() {
+    this.hayvaloresAlerta = true
+
     this.detener();
     this.subscripciones();
     this.activarAlertas();
@@ -98,6 +102,8 @@ export class EmuladorComponent implements OnInit, OnDestroy {
   }
 
   estable() {
+    this.hayvaloresAlerta = false
+
     this.detener();
     this.subscripciones();
     this.temperaturaActual = 36;
@@ -111,6 +117,8 @@ export class EmuladorComponent implements OnInit, OnDestroy {
   }
 
   detener() {
+    this.hayvaloresAlerta = false
+
     this.desactivarAlertas();
     clearInterval(this.intervalId);
     this.limpiarSubscripciones();
@@ -246,16 +254,29 @@ export class EmuladorComponent implements OnInit, OnDestroy {
         this.activarSirena();
       } else {
         this.desactivarSirena();
+        // Establece un intervalo de 5 minutos (300000 milisegundos)
+        setInterval(this.checkVariable, 120000);
       }
     });
   }
-
+  checkVariable = () => {
+    // console.log('Hola ', this.hayvaloresAlerta)
+    if (this.hayvaloresAlerta) {
+      this.activarBocina();
+      this.activarSirena()
+    }
+  };
   subscribirBocina(id_habitacion: number): Subscription {
     return this.mqttService.observe(`SMMI/Habitacion${id_habitacion}/bocina`).subscribe((message: IMqttMessage) => {
       if (message.payload.toString() === '1') {
         this.activarBocina();
       } else {
         this.desactivarBocina();
+
+
+        // Establece un intervalo de 5 minutos (300000 milisegundos)
+        setInterval(this.checkVariable, 300000);
+
       }
     });
   }
