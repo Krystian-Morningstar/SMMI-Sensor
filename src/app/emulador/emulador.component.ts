@@ -218,7 +218,7 @@ export class EmuladorComponent implements OnInit, OnDestroy {
         id_habitacion: idHabitacion
       };
       const payload = JSON.stringify(payloadObj);
-      this.mqttService.publish(ruta, payload).subscribe(() => {
+      this.mqttService.publish(ruta, payload, { qos: 0 }).subscribe(() => {
         console.log(`${sensor.topico} => habitación ${idHabitacion}--${valor}`);
         resolve();
       }, (error) => {
